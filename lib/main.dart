@@ -6,6 +6,10 @@ import 'notification_service.dart';
 import 'database/planner_database.dart';
 import 'database/backup_service.dart';
 
+final ValueNotifier<ThemeMode> appThemeMode = ValueNotifier<ThemeMode>(
+  ThemeMode.light,
+);
+
 void main() {
   runApp(const LifePlannerApp());
 }
@@ -15,18 +19,32 @@ class LifePlannerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'YEROO',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF3977E8),
-          brightness: Brightness.light,
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF5F7FB),
-      ),
-      home: const PlannerHomePage(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: appThemeMode,
+      builder: (context, mode, child) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'YEROO',
+          theme: ThemeData(
+            useMaterial3: true,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF3977E8),
+              brightness: Brightness.light,
+            ),
+            scaffoldBackgroundColor: const Color(0xFFF5F7FB),
+          ),
+          darkTheme: ThemeData(
+            useMaterial3: true,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF3977E8),
+              brightness: Brightness.dark,
+            ),
+            scaffoldBackgroundColor: const Color(0xFF101318),
+          ),
+          themeMode: mode,
+          home: const PlannerHomePage(),
+        );
+      },
     );
   }
 }
@@ -95,6 +113,17 @@ class _PlannerHomePageState extends State<PlannerHomePage> {
       await preferences.setBool('isOromo', value);
     } catch (error) {
       debugPrint('Could not save language preference: $error');
+    }
+  }
+
+  Future<void> _setDarkTheme(bool value) async {
+    appThemeMode.value = value ? ThemeMode.dark : ThemeMode.light;
+
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setBool('isDarkTheme', value);
+    } catch (error) {
+      debugPrint('Could not save theme preference: $error');
     }
   }
 
@@ -196,6 +225,8 @@ class _PlannerHomePageState extends State<PlannerHomePage> {
   Future<void> _initializeAppServices() async {
     try {
       final preferences = await SharedPreferences.getInstance();
+      final savedDarkTheme = preferences.getBool('isDarkTheme') ?? false;
+      appThemeMode.value = savedDarkTheme ? ThemeMode.dark : ThemeMode.light;
       final savedLanguage = preferences.getBool('isOromo');
       if (savedLanguage != null && mounted) {
         setState(() => isOromo = savedLanguage);
@@ -4083,6 +4114,29 @@ class _PlannerHomePageState extends State<PlannerHomePage> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: appThemeMode,
+            builder: (context, mode, child) => Card(
+              child: SwitchListTile(
+                secondary: Icon(
+                  mode == ThemeMode.dark ? Icons.dark_mode : Icons.light_mode,
+                  color: const Color(0xFF3977E8),
+                ),
+                title: Text(isOromo ? 'Dark Theme' : 'Dark Theme'),
+                subtitle: Text(
+                  isOromo
+                      ? (mode == ThemeMode.dark
+                            ? 'Halluu dukkanaa’aa hojii irra jira'
+                            : 'Halluu ifaa hojii irra jira')
+                      : (mode == ThemeMode.dark
+                            ? 'Dark appearance is active'
+                            : 'Light appearance is active'),
+                ),
+                value: mode == ThemeMode.dark,
+                onChanged: _setDarkTheme,
               ),
             ),
           ),
