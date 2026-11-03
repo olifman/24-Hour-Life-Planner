@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'notification_service.dart';
@@ -17,7 +17,7 @@ class LifePlannerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: '24-Hour Life Planner',
+      title: 'YEROO',
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
@@ -1657,7 +1657,7 @@ class _PlannerHomePageState extends State<PlannerHomePage> {
                   const SizedBox(height: 20),
                   Center(
                     child: Text(
-                      '24-Hour Life Planner',
+                      'YEROO',
                       style: TextStyle(
                         color: Colors.blueGrey.shade400,
                         fontSize: 12,
@@ -2672,7 +2672,7 @@ class _PlannerHomePageState extends State<PlannerHomePage> {
                                   if (details.isNotEmpty) ...[
                                     const SizedBox(height: 5),
                                     Text(
-                                      details.join(' â€¢ '),
+                                      details.join('\u2022'),
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall,
@@ -3375,7 +3375,7 @@ class _PlannerHomePageState extends State<PlannerHomePage> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              '${_timetableDayName(selectedDay)} Â· '
+                              '${_timetableDayName(selectedDay)} · '
                               '${dayEntries.length} '
                               '${isOromo ? 'sagantaa' : 'entries'}',
                               style: const TextStyle(
@@ -4124,22 +4124,316 @@ class _PlannerHomePageState extends State<PlannerHomePage> {
           ),
           const SizedBox(height: 12),
           Card(
+            elevation: 3,
+            shadowColor: const Color(0xFF2E7D32).withValues(alpha: 0.15),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            clipBehavior: Clip.antiAlias,
             child: ListTile(
-              leading: const Icon(Icons.info_outline, color: Color(0xFF3977E8)),
-              title: Text(isOromo ? "Waa'ee appii" : 'About app'),
-              subtitle: const Text('24-Hour Life Planner'),
-              trailing: const Icon(Icons.chevron_right),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 12,
+              ),
+              leading: Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2E7D32), Color(0xFF66BB6A)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons.access_time_rounded,
+                  color: Colors.white,
+                  size: 30,
+                ),
+              ),
+              title: Text(
+                isOromo ? "Waa'ee YEROO" : 'About YEROO',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 17,
+                ),
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 5),
+                child: Text(
+                  isOromo
+                      ? 'Yeroo kee qindeessi. Galma kee bira ga’i.'
+                      : 'Organize your time. Achieve your goals.',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 17),
               onTap: () {
-                showAboutDialog(
+                showDialog<void>(
                   context: context,
-                  applicationName: '24-Hour Life Planner',
-                  children: [
-                    Text(
-                      isOromo
-                          ? 'Appii hojii guyyaa kee karoorsuu, hordofuu fi xumura isaa ilaaluuf gargaaru.'
-                          : 'An app to plan your day, track tasks, and review progress.',
+                  builder: (dialogContext) => Dialog(
+                    backgroundColor: Colors.transparent,
+                    insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 430),
+                      decoration: BoxDecoration(
+                        color: Theme.of(dialogContext).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(26),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.18),
+                            blurRadius: 25,
+                            offset: const Offset(0, 12),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(26),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.fromLTRB(
+                                24,
+                                30,
+                                24,
+                                26,
+                              ),
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Color(0xFF14532D),
+                                    Color(0xFF2E7D32),
+                                    Color(0xFF66BB6A),
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Container(
+                                    width: 76,
+                                    height: 76,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.17,
+                                      ),
+                                      borderRadius: BorderRadius.circular(23),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.4,
+                                        ),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.schedule_rounded,
+                                      color: Colors.white,
+                                      size: 43,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  const Text(
+                                    'YEROO',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 30,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 3,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    'TIME  •  PLAN  •  ACHIEVE',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.9,
+                                      ),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 13),
+                                  Text(
+                                    isOromo
+                                        ? 'Yeroo kee sirnaan fayyadami!'
+                                        : 'Make every moment count!',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Flexible(
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.fromLTRB(
+                                  22,
+                                  22,
+                                  22,
+                                  8,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      isOromo ? "WAA'EE YEROO" : 'ABOUT YEROO',
+                                      style: const TextStyle(
+                                        color: Color(0xFF2E7D32),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                        letterSpacing: 1.5,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      isOromo
+                                          ? "YEROO appilikeeshinii yeroo kee sirnaan qindeessuuf si gargaarudha. Hojii guyyaa guyyaa karoorfachuu, sagantaa barnootaa qindeessuu, hojii raawwatame hordofuu fi galma kee bira ga'uuf itti fayyadamuu dandeessa."
+                                          : 'YEROO is a smart time-management application designed to help you organize your daily activities, manage study schedules, track completed tasks, and achieve your personal goals.',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        height: 1.7,
+                                        color: Theme.of(dialogContext)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.color,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 22),
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF2E7D32)
+                                            .withValues(alpha: 0.08),
+                                        borderRadius: BorderRadius.circular(18),
+                                        border: Border.all(
+                                          color: const Color(0xFF2E7D32)
+                                              .withValues(alpha: 0.18),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 54,
+                                            height: 54,
+                                            decoration: BoxDecoration(
+                                              gradient: const LinearGradient(
+                                                colors: [
+                                                  Color(0xFF2E7D32),
+                                                  Color(0xFF66BB6A),
+                                                ],
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                            ),
+                                            child: const Icon(
+                                              Icons.person_rounded,
+                                              color: Colors.white,
+                                              size: 30,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 13),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  isOromo
+                                                      ? 'DEVELOPER'
+                                                      : 'DEVELOPER',
+                                                  style: const TextStyle(
+                                                    color: Color(0xFF2E7D32),
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                    letterSpacing: 1.3,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 5),
+                                                const Text(
+                                                  'Developed by Lamesa Bekele',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  isOromo
+                                                      ? 'Barataa Software Engineering'
+                                                      : 'Software Engineering Student',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color:
+                                                        Theme.of(dialogContext)
+                                                            .textTheme
+                                                            .bodySmall
+                                                            ?.color,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 18),
+                                    Center(
+                                      child: Text(
+                                        'YEROO  •  Version 1.0',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Theme.of(dialogContext)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.color,
+                                          letterSpacing: 1,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+                              child: SizedBox(
+                                width: double.infinity,
+                                child: FilledButton(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFF2E7D32),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 13,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(13),
+                                    ),
+                                  ),
+                                  onPressed: () =>
+                                      Navigator.of(dialogContext).pop(),
+                                  child: Text(
+                                    isOromo ? 'Cufi' : 'Close',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ],
+                  ),
                 );
               },
             ),
@@ -4194,7 +4488,11 @@ class _PlannerHomePageState extends State<PlannerHomePage> {
 
   bool _taskOccursOnDate(PlannerTask task, DateTime targetDate) {
     final taskDay = DateTime(task.date.year, task.date.month, task.date.day);
-    final targetDay = DateTime(targetDate.year, targetDate.month, targetDate.day);
+    final targetDay = DateTime(
+      targetDate.year,
+      targetDate.month,
+      targetDate.day,
+    );
 
     if (targetDay.isBefore(taskDay)) return false;
 
@@ -4205,6 +4503,7 @@ class _PlannerHomePageState extends State<PlannerHomePage> {
 
     return taskDay == targetDay;
   }
+
   Widget _buildCalendarPage() {
     final now = DateTime.now();
     final firstDay = DateTime(_calendarMonth.year, _calendarMonth.month, 1);
@@ -4774,5 +5073,3 @@ class _ReportStatusRow extends StatelessWidget {
     );
   }
 }
-
-
