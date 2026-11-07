@@ -1,5 +1,6 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'notification_service.dart';
@@ -386,8 +387,6 @@ class _PlannerHomePageState extends State<PlannerHomePage>
   String get pageTitle => isOromo ? 'Karoora Jireenyaa' : 'Life Planner';
 
   String get todayLabel => isOromo ? "Har'a" : 'Today';
-
-  String get greeting => isOromo ? 'Guyyaa gaarii!' : 'Have a great day!';
 
   String get subtitle => isOromo
       ? "Guyyaa kee karoorsii, galma kee bira gahi."
@@ -1662,30 +1661,6 @@ class _PlannerHomePageState extends State<PlannerHomePage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      isOromo ? 'BAGA NAGAAN DHUFTAN' : 'WELCOME BACK',
-                      style: TextStyle(
-                        color: isDark
-                            ? const Color(0xFF9AAEFF)
-                            : blue,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                    const SizedBox(height: 7),
-                    Text(
-                      greeting,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 27,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.8,
-                        color: onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
                       formatDate(),
                       style: TextStyle(
                         fontSize: 12,
@@ -1868,17 +1843,7 @@ class _PlannerHomePageState extends State<PlannerHomePage>
 
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  isOromo ? 'Wantoota ijoo' : 'Explore YEROO',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
-                    color: onSurface,
-                  ),
-                ),
-              ),
+              const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -4759,7 +4724,7 @@ class _PlannerHomePageState extends State<PlannerHomePage>
                 subtitle: Text(
                   isOromo
                       ? (mode == ThemeMode.dark
-                            ? 'Halluu dukkanaa’aa hojii irra jira'
+                            ? "Halluu dukkanaa'aa hojii irra jira"
                             : 'Halluu ifaa hojii irra jira')
                       : (mode == ThemeMode.dark
                             ? 'Dark appearance is active'
@@ -4847,7 +4812,7 @@ class _PlannerHomePageState extends State<PlannerHomePage>
                 padding: const EdgeInsets.only(top: 5),
                 child: Text(
                   isOromo
-                      ? 'Yeroo kee qindeessi. Galma kee bira ga’i.'
+                      ? "Yeroo kee qindeessi. Galma kee bira ga'i."
                       : 'Organize your time. Achieve your goals.',
                   style: const TextStyle(fontSize: 12),
                 ),
@@ -5065,6 +5030,213 @@ class _PlannerHomePageState extends State<PlannerHomePage>
                                                 ),
                                               ],
                                             ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 18),
+                                    const SizedBox(height: 22),
+                                    Text(
+                                      isOromo ? 'BARNOOTA' : 'EDUCATION',
+                                      style: const TextStyle(
+                                        color: Color(0xFF2E7D32),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                        letterSpacing: 1.5,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Container(
+                                      padding: const EdgeInsets.all(15),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(17),
+                                        color: const Color(0xFF21845F)
+                                            .withValues(alpha: 0.08),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.school_rounded,
+                                            color: Color(0xFF21845F),
+                                            size: 30,
+                                          ),
+                                          const SizedBox(width: 13),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                const Text(
+                                                  'Bule Hora University',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  isOromo
+                                                      ? 'Barataa Muummee Software Engineering'
+                                                      : 'Software Engineering',
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 22),
+                                    Text(
+                                      isOromo ? 'TEKNOLOOJII' : 'TECHNOLOGIES',
+                                      style: const TextStyle(
+                                        color: Color(0xFF2E7D32),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                        letterSpacing: 1.5,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: const [
+                                        Chip(
+                                          avatar: Icon(Icons.flutter_dash, size: 17),
+                                          label: Text('Flutter'),
+                                        ),
+                                        Chip(
+                                          avatar: Icon(Icons.code, size: 17),
+                                          label: Text('Dart'),
+                                        ),
+                                        Chip(
+                                          avatar: Icon(Icons.storage, size: 17),
+                                          label: Text('SQLite'),
+                                        ),
+                                        Chip(
+                                          avatar: Icon(Icons.settings, size: 17),
+                                          label: Text('SharedPreferences'),
+                                        ),
+                                        Chip(
+                                          avatar: Icon(
+                                            Icons.notifications_active_outlined,
+                                            size: 17,
+                                          ),
+                                          label: Text('Notifications'),
+                                        ),
+                                        Chip(
+                                          avatar: Icon(Icons.link, size: 17),
+                                          label: Text('URL Launcher'),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 22),
+                                    Text(
+                                      isOromo ? 'NA QUNNAMAA' : 'GET IN TOUCH',
+                                      style: const TextStyle(
+                                        color: Color(0xFF2E7D32),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                        letterSpacing: 1.5,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Card(
+                                      elevation: 0,
+                                      margin: EdgeInsets.zero,
+                                      color: Theme.of(dialogContext)
+                                          .colorScheme
+                                          .surfaceContainerHighest
+                                          .withValues(alpha: 0.45),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(17),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          ListTile(
+                                            dense: true,
+                                            leading: const Icon(
+                                              Icons.email_outlined,
+                                              color: Color(0xFF21845F),
+                                            ),
+                                            title: const Text(
+                                              'olifman787@gmail.com',
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                            subtitle: const Text('Email'),
+                                            onTap: () {
+                                              launchUrl(Uri.parse(
+                                                'mailto:olifman787@gmail.com',
+                                              ));
+                                            },
+                                          ),
+                                          const Divider(height: 1, indent: 55),
+                                          ListTile(
+                                            dense: true,
+                                            leading: const Icon(
+                                              Icons.email_outlined,
+                                              color: Color(0xFF21845F),
+                                            ),
+                                            title: const Text(
+                                              'lambekele147@gmail.com',
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                            subtitle: const Text('Email'),
+                                            onTap: () {
+                                              launchUrl(Uri.parse(
+                                                'mailto:lambekele147@gmail.com',
+                                              ));
+                                            },
+                                          ),
+                                          const Divider(height: 1, indent: 55),
+                                          ListTile(
+                                            dense: true,
+                                            leading: const Icon(
+                                              Icons.send_rounded,
+                                              color: Color(0xFF21845F),
+                                            ),
+                                            title: const Text('@lamesa_bekele'),
+                                            subtitle: const Text('Telegram'),
+                                            onTap: () {
+                                              launchUrl(Uri.parse(
+                                                'https://t.me/lamesa_bekele',
+                                              ));
+                                            },
+                                          ),
+                                          const Divider(height: 1, indent: 55),
+                                          ListTile(
+                                            dense: true,
+                                            leading: const Icon(
+                                              Icons.code_rounded,
+                                              color: Color(0xFF21845F),
+                                            ),
+                                            title: const Text('github.com/olifman'),
+                                            subtitle: const Text('GitHub'),
+                                            onTap: () {
+                                              launchUrl(Uri.parse(
+                                                'https://github.com/olifman',
+                                              ));
+                                            },
+                                          ),
+                                          const Divider(height: 1, indent: 55),
+                                          ListTile(
+                                            dense: true,
+                                            leading: const Icon(
+                                              Icons.language_rounded,
+                                              color: Color(0xFF21845F),
+                                            ),
+                                            title: const Text(
+                                              'lamesa-bekele.netlify.app',
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                            subtitle: const Text('Portfolio'),
+                                            onTap: () {
+                                              launchUrl(Uri.parse(
+                                                'https://lamesa-bekele.netlify.app',
+                                              ));
+                                            },
                                           ),
                                         ],
                                       ),
@@ -5757,6 +5929,7 @@ class _ReportStatusRow extends StatelessWidget {
     );
   }
 }
+
 
 
 
