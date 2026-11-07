@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -5,6 +6,8 @@ import 'notification_service.dart';
 
 import 'database/planner_database.dart';
 import 'database/backup_service.dart';
+
+
 
 final ValueNotifier<ThemeMode> appThemeMode = ValueNotifier<ThemeMode>(
   ThemeMode.light,
@@ -28,18 +31,18 @@ class LifePlannerApp extends StatelessWidget {
           theme: ThemeData(
             useMaterial3: true,
             colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF3977E8),
+              seedColor: const Color(0xFF21845F),
               brightness: Brightness.light,
             ),
-            scaffoldBackgroundColor: const Color(0xFFF5F7FB),
+            scaffoldBackgroundColor: const Color(0xFFF4F7F3),
           ),
           darkTheme: ThemeData(
             useMaterial3: true,
             colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF3977E8),
+              seedColor: const Color(0xFF21845F),
               brightness: Brightness.dark,
             ),
-            scaffoldBackgroundColor: const Color(0xFF101318),
+            scaffoldBackgroundColor: const Color(0xFF0B1410),
           ),
           themeMode: mode,
           home: const PlannerHomePage(),
@@ -86,7 +89,8 @@ class PlannerHomePage extends StatefulWidget {
   State<PlannerHomePage> createState() => _PlannerHomePageState();
 }
 
-class _PlannerHomePageState extends State<PlannerHomePage> {
+class _PlannerHomePageState extends State<PlannerHomePage>
+    with WidgetsBindingObserver {
   bool isOromo = true;
   int _selectedIndex = 0;
   DateTime _calendarMonth = DateTime(
@@ -101,7 +105,30 @@ class _PlannerHomePageState extends State<PlannerHomePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+    });
     _initializeAppServices();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshReminders();
+    }
+  }
+
+  Future<void> _refreshReminders() async {
+    await _loadTasks();
+    for (final task in tasks) {
+      await _scheduleReminderForTask(task);
+    }
   }
 
   Future<void> _setLanguage(bool value) async {
@@ -227,28 +254,45 @@ class _PlannerHomePageState extends State<PlannerHomePage> {
       final preferences = await SharedPreferences.getInstance();
       final savedDarkTheme = preferences.getBool('isDarkTheme') ?? false;
       appThemeMode.value = savedDarkTheme ? ThemeMode.dark : ThemeMode.light;
+
       final savedLanguage = preferences.getBool('isOromo');
       if (savedLanguage != null && mounted) {
         setState(() => isOromo = savedLanguage);
       }
     } catch (error) {
-      debugPrint('Could not load language preference: $error');
+      debugPrint('Could not load app preferences: $error');
     }
 
-    try {
-      await NotificationService.instance.initialize();
-      await NotificationService.instance.requestPermissions();
-    } catch (error) {
-      debugPrint('Notification initialization failed: $error');
-    }
-
+    // Load saved tasks before starting notification work.
     await _loadTasks();
 
-    for (final task in tasks) {
-      await _scheduleReminderForTask(task);
-    }
+    if (!mounted) return;
+
+    // Notifications and reminders run after the main screen can appear.
+    unawaited(_initializeNotificationsInBackground());
   }
 
+  Future<void> _initializeNotificationsInBackground() async {
+    try {
+      await NotificationService.instance.initialize();
+
+      await NotificationService.instance.requestPermissions();
+
+      final tasksToSchedule = List<PlannerTask>.from(tasks);
+
+      for (final task in tasksToSchedule) {
+        if (!mounted) return;
+
+        try {
+          await _scheduleReminderForTask(task);
+        } catch (error) {
+          debugPrint('Could not restore reminder for ${task.title}: $error');
+        }
+      }
+    } catch (error) {
+      debugPrint('Background notification initialization failed: $error');
+    }
+  }
   Future<void> _scheduleReminderForTask(PlannerTask task) async {
     if (task.id == null) return;
 
@@ -279,6 +323,7 @@ class _PlannerHomePageState extends State<PlannerHomePage> {
   }
 
   Future<void> _loadTasks() async {
+
     try {
       final rows = await PlannerDatabase.instance.getTasks();
 
@@ -1310,426 +1355,1007 @@ class _PlannerHomePageState extends State<PlannerHomePage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final remainingCount = tasks.length - completedCount;
-    final progress = tasks.isEmpty ? 0.0 : completedCount / tasks.length;
+  Future<void> _setTaskCompleted(PlannerTask task, bool value) async {
+    final previousValue = task.completed;
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        titleSpacing: 20,
-        title: Row(
+    setState(() {
+      task.completed = value;
+      task.status = value ? 'Completed' : 'Not Started';
+    });
+
+    if (task.id == null) return;
+
+    try {
+      await PlannerDatabase.instance.updateTask(task.id!, {
+        'completed': value ? 1 : 0,
+        'status': value ? 'Completed' : 'Not Started',
+      });
+
+      if (value) {
+        await NotificationService.instance.cancel(task.id!);
+      } else {
+        await _scheduleReminderForTask(task);
+      }
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        task.completed = previousValue;
+        task.status = previousValue ? 'Completed' : 'Not Started';
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isOromo
+                ? 'Jijjiirama kuusuu hin dandeenye.'
+                : 'Could not save the task status.',
+          ),
+        ),
+      );
+    }
+  }
+
+  String _taskStateLabel(PlannerTask task, DateTime now) {
+    if (task.completed) {
+      return isOromo ? 'Xumurame' : 'Completed';
+    }
+
+    final start = _taskStartDateTime(task.date, task.start);
+    final end = _taskEndDateTime(task.date, task.start, task.end);
+
+    if (now.isAfter(start) && now.isBefore(end)) {
+      return isOromo ? 'Hojii irra jira' : 'In progress';
+    }
+
+    if (now.isBefore(start)) {
+      return isOromo ? 'Itti aanu' : 'Upcoming';
+    }
+
+    return isOromo ? 'Yeroon darbe' : 'Past';
+  }
+
+  String _remainingTimeLabel(DateTime now, PlannerTask task) {
+    final start = _taskStartDateTime(task.date, task.start);
+    final end = _taskEndDateTime(task.date, task.start, task.end);
+
+    final difference = now.isBefore(start)
+        ? start.difference(now)
+        : end.difference(now);
+
+    if (difference.isNegative) {
+      return isOromo ? 'Yeroon isaa darbeera' : 'Time has passed';
+    }
+
+    final hours = difference.inHours;
+    final minutes = difference.inMinutes.remainder(60);
+
+    if (now.isBefore(start)) {
+      if (hours > 0) {
+        return isOromo
+            ? 'Sa\'aatii $hours fi daqiiqaa $minutes booda'
+            : 'Starts in ${hours}h ${minutes}m';
+      }
+      return isOromo ? 'Daqiiqaa $minutes booda' : 'Starts in ${minutes}m';
+    }
+
+    if (hours > 0) {
+      return isOromo
+          ? 'Xumuruuf sa\'aatii $hours fi daqiiqaa $minutes'
+          : 'Ends in ${hours}h ${minutes}m';
+    }
+
+    return isOromo ? 'Xumuruuf daqiiqaa $minutes' : 'Ends in ${minutes}m';
+  }
+
+  Widget _buildTaskCard(PlannerTask task, {bool showDate = false}) {
+    final now = DateTime.now();
+    final start = _taskStartDateTime(task.date, task.start);
+    final end = _taskEndDateTime(task.date, task.start, task.end);
+
+    final isCurrent =
+        !task.completed && !now.isBefore(start) && now.isBefore(end);
+
+    final accent = task.completed
+        ? const Color(0xFF269B72)
+        : isCurrent
+        ? const Color(0xFFE6A23C)
+        : const Color(0xFF368A70);
+
+    final index = tasks.indexOf(task);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 11),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(19),
+        border: Border.all(
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+        child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(9),
+              width: 4,
+              height: 58,
               decoration: BoxDecoration(
-                color: const Color(0xFFE8EFFF),
-                borderRadius: BorderRadius.circular(13),
-              ),
-              child: const Icon(
-                Icons.calendar_month_rounded,
-                color: Color(0xFF3977E8),
+                color: accent,
+                borderRadius: BorderRadius.circular(8),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 11),
+            Checkbox(
+              value: task.completed,
+              activeColor: const Color(0xFF21845F),
+              onChanged: (value) {
+                if (value != null) {
+                  _setTaskCompleted(task, value);
+                }
+              },
+            ),
+            const SizedBox(width: 5),
             Expanded(
-              child: Text(
-                pageTitle,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: index < 0 ? null : () => editTask(index),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      task.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        decoration: task.completed
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                        color: task.completed
+                            ? Theme.of(context).disabledColor
+                            : Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 4,
+                      children: [
+                        Text(
+                          '${formatTime(task.start)} - ${formatTime(task.end)}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                          ),
+                        ),
+                        Text(
+                          task.category,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: accent,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (showDate) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '${task.date.day}/${task.date.month}/${task.date.year}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Theme.of(context).hintColor,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
+            ),
+            PopupMenuButton<String>(
+              tooltip: isOromo ? 'Filannoo' : 'Options',
+              onSelected: (value) {
+                if (value == 'edit' && index >= 0) {
+                  editTask(index);
+                } else if (value == 'delete' && index >= 0) {
+                  deleteTask(index);
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'edit',
+                  child: Text(isOromo ? 'Gulaali' : 'Edit'),
+                ),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Text(isOromo ? 'Haqi' : 'Delete'),
+                ),
+              ],
             ),
           ],
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: PopupMenuButton<bool>(
-              tooltip: 'Language',
-              onSelected: (value) => _setLanguage(value),
-              itemBuilder: (context) => const [
-                PopupMenuItem(value: true, child: Text('Afaan Oromoo')),
-                PopupMenuItem(value: false, child: Text('English')),
+      ),
+    );
+  }
+
+  Widget _buildQuickAction({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: Material(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 5),
+            child: Column(
+              children: [
+                Container(
+                  width: 43,
+                  height: 43,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(icon, color: color, size: 22),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ],
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.black12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDashboard() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    final todayTasks = tasks
+        .where((task) => _taskOccursOnDate(task, today))
+        .toList();
+
+    final totalToday = todayTasks.length;
+    final completedToday =
+        todayTasks.where((task) => task.completed).length;
+    final remainingToday = totalToday - completedToday;
+    final progress =
+        totalToday == 0 ? 0.0 : completedToday / totalToday;
+
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final onSurface = theme.colorScheme.onSurface;
+
+    const blue = Color(0xFF536DFE);
+    const purple = Color(0xFF8065E8);
+    const teal = Color(0xFF20B99A);
+    const orange = Color(0xFFFFA94D);
+
+    return SafeArea(
+      child: ListView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.language, size: 18),
-                    const SizedBox(width: 5),
                     Text(
-                      isOromo ? 'OR' : 'EN',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      isOromo ? 'BAGA NAGAAN DHUFTAN' : 'WELCOME BACK',
+                      style: TextStyle(
+                        color: isDark
+                            ? const Color(0xFF9AAEFF)
+                            : blue,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                      ),
                     ),
-                    const Icon(Icons.arrow_drop_down),
+                    const SizedBox(height: 7),
+                    Text(
+                      greeting,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 27,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.8,
+                        color: onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      formatDate(),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ],
                 ),
+              ),
+
+            ],
+          ),
+
+          const SizedBox(height: 25),
+
+          // Premium daily progress hero.
+          Container(
+            padding: const EdgeInsets.all(21),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [
+                  Color(0xFF172554),
+                  Color(0xFF293D91),
+                  Color(0xFF536DFE),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(27),
+              boxShadow: [
+                BoxShadow(
+                  color: blue.withValues(alpha: 0.22),
+                  blurRadius: 24,
+                  offset: const Offset(0, 11),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isOromo
+                                ? 'Guyyaa kee milkeessi'
+                                : 'Make today count',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 19,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.4,
+                            ),
+                          ),
+                          const SizedBox(height: 7),
+                          Text(
+                            isOromo
+                                ? 'Tarkaanfii xiqqaan milkaa\'ina guddaa fida.'
+                                : 'Small steps lead to big achievements.',
+                            style: const TextStyle(
+                              color: Color(0xFFD8E0FF),
+                              fontSize: 11,
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 76,
+                      height: 76,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          SizedBox.expand(
+                            child: CircularProgressIndicator(
+                              value: progress,
+                              strokeWidth: 7,
+                              backgroundColor: Colors.white24,
+                              valueColor:
+                                  const AlwaysStoppedAnimation<Color>(
+                                Color(0xFF8FF0D0),
+                              ),
+                              strokeCap: StrokeCap.round,
+                            ),
+                          ),
+                          Text(
+                            '${(progress * 100).round()}%',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 23),
+                Container(
+                  height: 1,
+                  color: Colors.white.withValues(alpha: 0.18),
+                ),
+                const SizedBox(height: 15),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.check_circle_outline_rounded,
+                      color: Color(0xFF8FF0D0),
+                      size: 19,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '$completedToday / $totalToday ${isOromo ? 'xumurame' : 'tasks completed'}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '$remainingToday ${isOromo ? 'hafte' : 'left'}',
+                      style: const TextStyle(
+                        color: Color(0xFFD8E0FF),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 25),
+
+          // Daily statistics.
+          Row(
+            children: [
+              Expanded(
+                child: _buildHomeStatCard(
+                  icon: Icons.assignment_turned_in_rounded,
+                  label: isOromo ? 'Xumurame' : 'Completed',
+                  value: '$completedToday',
+                  color: teal,
+                  isDark: isDark,
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: _buildHomeStatCard(
+                  icon: Icons.pending_actions_rounded,
+                  label: isOromo ? 'Hafe' : 'Remaining',
+                  value: '$remainingToday',
+                  color: orange,
+                  isDark: isDark,
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: _buildHomeStatCard(
+                  icon: Icons.event_note_rounded,
+                  label: isOromo ? 'Hunda' : 'Total',
+                  value: '$totalToday',
+                  color: purple,
+                  isDark: isDark,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 29),
+
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  isOromo ? 'Wantoota ijoo' : 'Explore YEROO',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                    color: onSurface,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF252B43)
+                      : const Color(0xFFEEF1FF),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '4 ${isOromo ? 'filannoo' : 'features'}',
+                  style: const TextStyle(
+                    color: blue,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isOromo
+                ? 'Wanta barbaadde filadhu.'
+                : 'Everything you need, in one place.',
+            style: TextStyle(
+              fontSize: 12,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 17),
+
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 13,
+            mainAxisSpacing: 13,
+            childAspectRatio: 1.08,
+            children: [
+              _buildHomeFeatureCard(
+                icon: Icons.calendar_month_rounded,
+                title: isOromo ? 'Kalaandarii' : 'Calendar',
+                subtitle: isOromo ? 'Guyyaa fi hojii' : 'Dates and events',
+                color: const Color(0xFFD69A36),
+                onTap: () => setState(() => _selectedIndex = 1),
+              ),
+              _buildHomeFeatureCard(
+                icon: Icons.school_rounded,
+                title: isOromo ? 'Barnoota' : 'Study',
+                subtitle: isOromo ? 'Koorsii fi sagantaa' : 'Courses and classes',
+                color: purple,
+                onTap: () => setState(() => _selectedIndex = 2),
+              ),
+              _buildHomeFeatureCard(
+                icon: Icons.add_task_rounded,
+                title: isOromo ? 'Hojii dabali' : 'Add a task',
+                subtitle: isOromo ? 'Karoora haaraa' : 'Create something new',
+                color: teal,
+                onTap: addTask,
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 23),
+
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? const Color(0xFF20263B)
+                  : const Color(0xFFF0F3FF),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: blue.withValues(alpha: 0.10),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: blue.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.auto_awesome_rounded,
+                    color: blue,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    totalToday == 0
+                        ? (isOromo
+                            ? 'Har\'a hojii kee karoorsi.'
+                            : 'Start your day with a clear plan.')
+                        : remainingToday == 0
+                            ? (isOromo
+                                ? 'Hojii har\'aa hunda xumurte!'
+                                : 'Amazing! You completed today\'s tasks.')
+                            : (isOromo
+                                ? 'Hojii $remainingToday si eeggata. Itti fufi!'
+                                : '$remainingToday tasks left. Keep going!'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.5,
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+          Center(
+            child: Text(
+              'YEROO  •  Make every moment meaningful',
+              style: TextStyle(
+                color: theme.hintColor,
+                fontSize: 10,
+                letterSpacing: 0.8,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
         ],
       ),
-      body: _selectedIndex == 0
-          ? SafeArea(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
+    );
+  }
+
+  Widget _buildHomeStatCard({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+    required bool isDark,
+  }) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 14,
+      ),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: theme.dividerColor.withValues(alpha: 0.12),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(
+              alpha: isDark ? 0.08 : 0.025,
+            ),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 21,
+              fontWeight: FontWeight.w900,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHomeFeatureCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                color.withValues(alpha: isDark ? 0.22 : 0.10),
+                theme.colorScheme.surface,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: color.withValues(alpha: 0.20),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: isDark ? 0.04 : 0.07),
+                blurRadius: 15,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 47,
+                height: 47,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(icon, color: color, size: 25),
+              ),
+              const Spacer(),
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Row(
                 children: [
-                  Text(
-                    formatDate(),
-                    style: const TextStyle(
-                      color: Color(0xFF3977E8),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    greeting,
-                    style: const TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF17233C),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(fontSize: 14, color: Colors.black54),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Daily progress card
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF3977E8), Color(0xFF635BDF)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(26),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          isOromo
-                              ? "Milkaa'ina guyyaa kee"
-                              : 'Your daily progress',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              '${(progress * 100).round()}%',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 38,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const Spacer(),
-                            Text(
-                              '$completedCount / ${tasks.length}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: LinearProgressIndicator(
-                            value: progress,
-                            minHeight: 9,
-                            backgroundColor: Colors.white30,
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                              Colors.white,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          isOromo
-                              ? "Tarkaanfiin xixiqqoon milkaa'ina guddaa fida."
-                              : 'Small steps lead to big achievements.',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Summary cards
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SummaryCard(
-                          icon: Icons.check_circle_outline,
-                          iconColor: const Color(0xFF159B72),
-                          value: '$completedCount',
-                          label: completedLabel,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _SummaryCard(
-                          icon: Icons.pending_actions,
-                          iconColor: const Color(0xFFEA9635),
-                          value: '$remainingCount',
-                          label: remainingLabel,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _SummaryCard(
-                          icon: Icons.list_alt,
-                          iconColor: const Color(0xFF3977E8),
-                          value: '${tasks.length}',
-                          label: totalLabel,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 28),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          tasksLabel,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      FilledButton.icon(
-                        onPressed: addTask,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: Text(addTaskLabel),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  if (tasks.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(28),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Column(
-                        children: [
-                          const Icon(
-                            Icons.event_note,
-                            size: 44,
-                            color: Colors.blueGrey,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(emptyLabel, textAlign: TextAlign.center),
-                        ],
-                      ),
-                    )
-                  else
-                    ...tasks.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final task = entry.value;
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.black.withAlpha(10)),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 12,
-                          ),
-                          child: Row(
-                            children: [
-                              Checkbox(
-                                value: task.completed,
-                                activeColor: const Color(0xFF159B72),
-                                onChanged: (value) async {
-                                  final previousValue = task.completed;
-                                  final newValue = value ?? false;
-
-                                  setState(() {
-                                    task.completed = newValue;
-                                  });
-
-                                  if (task.id == null) return;
-                                  final messenger = ScaffoldMessenger.of(
-                                    context,
-                                  );
-
-                                  try {
-                                    await PlannerDatabase.instance.updateTask(
-                                      task.id!,
-                                      {'completed': newValue ? 1 : 0},
-                                    );
-                                  } catch (error) {
-                                    if (!mounted) return;
-                                    setState(() {
-                                      task.completed = previousValue;
-                                    });
-                                    messenger.showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          isOromo
-                                              ? 'Jijjiirama kuusuu hin dandeenye.'
-                                              : 'Could not save the completion status.',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
-                              ),
-                              Container(
-                                width: 4,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: task.completed
-                                      ? const Color(0xFF159B72)
-                                      : const Color(0xFF3977E8),
-                                  borderRadius: BorderRadius.circular(5),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      task.title,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 15,
-                                        decoration: task.completed
-                                            ? TextDecoration.lineThrough
-                                            : TextDecoration.none,
-                                        color: task.completed
-                                            ? Colors.black45
-                                            : const Color(0xFF17233C),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.access_time,
-                                          size: 14,
-                                          color: Colors.black45,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Flexible(
-                                          child: Text(
-                                            '${formatTime(task.start)} - ${formatTime(task.end)}',
-                                            style: const TextStyle(
-                                              color: Colors.black54,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: isOromo ? 'Gulaali' : 'Edit',
-                                onPressed: () => editTask(index),
-                                icon: const Icon(
-                                  Icons.edit_outlined,
-                                  color: Color(0xFF3977E8),
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: isOromo ? 'Haqi' : 'Delete',
-                                onPressed: () => deleteTask(index),
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  color: Colors.black45,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
-
-                  const SizedBox(height: 20),
-                  Center(
+                  Expanded(
                     child: Text(
-                      'YEROO',
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: Colors.blueGrey.shade400,
-                        fontSize: 12,
+                        fontSize: 10,
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  Icon(
+                    Icons.arrow_forward_rounded,
+                    color: color,
+                    size: 17,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  Widget _buildSchedulePage() {
+    final sortedTasks = List<PlannerTask>.from(tasks)
+      ..sort((a, b) {
+        final dateComparison = a.date.compareTo(b.date);
+        if (dateComparison != 0) return dateComparison;
+        final aTime = a.start.hour * 60 + a.start.minute;
+        final bTime = b.start.hour * 60 + b.start.minute;
+        return aTime.compareTo(bTime);
+      });
+
+    final theme = Theme.of(context);
+
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 25),
+        children: [
+          Text(
+            isOromo ? 'Sagantaa koo' : 'My schedule',
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w900,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isOromo
+                ? 'Hojiiwwan kee hunda bulchi, gulaali fi xumuri.'
+                : 'Manage, edit and complete all your tasks.',
+            style: TextStyle(
+              fontSize: 12,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF103F32), Color(0xFF238765)],
+              ),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.event_available_rounded,
+                  color: Colors.white,
+                  size: 30,
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${sortedTasks.length} ${isOromo ? 'hojii waliigalaa' : 'total tasks'}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${sortedTasks.where((task) => task.completed).length} ${isOromo ? 'xumurame' : 'completed'}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: addTask,
+                  icon: const Icon(Icons.add, size: 17),
+                  label: Text(isOromo ? 'Dabali' : 'Add'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          if (sortedTasks.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(28),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                children: [
+                  const Icon(
+                    Icons.event_note_rounded,
+                    size: 45,
+                    color: Color(0xFF21845F),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(emptyLabel, textAlign: TextAlign.center),
                 ],
               ),
             )
+          else
+            ...sortedTasks.map((task) => _buildTaskCard(task, showDate: true)),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        titleSpacing: 20,
+        title: Row(
+          children: [
+            Container(
+              width: 35,
+              height: 35,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF103F32), Color(0xFF238765)],
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.auto_awesome_rounded,
+                color: Colors.white,
+                size: 19,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'YEROO',
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ],
+        ),
+        actions: [],
+      ),
+      body: _selectedIndex == 0
+          ? _buildDashboard()
+          : _selectedIndex == 5
+          ? _buildSchedulePage()
           : _buildPlaceholderPage(_selectedIndex),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
+        selectedIndex: _selectedIndex == 5
+            ? 1
+            : _selectedIndex == 3
+                ? 2
+                : _selectedIndex == 4
+                    ? 3
+                    : 0,
         onDestinationSelected: (index) {
-          setState(() => _selectedIndex = index);
+          setState(() {
+            _selectedIndex = index == 0
+                ? 0
+                : index == 1
+                    ? 5
+                    : index == 2
+                        ? 3
+                        : 4;
+          });
         },
         destinations: [
           NavigationDestination(
             icon: const Icon(Icons.home_outlined),
-            selectedIcon: const Icon(Icons.home),
+            selectedIcon: const Icon(Icons.home_rounded),
             label: isOromo ? 'Mana' : 'Home',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.calendar_month_outlined),
-            selectedIcon: const Icon(Icons.calendar_month),
-            label: isOromo ? 'Kalaandarii' : 'Calendar',
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.school_outlined),
-            selectedIcon: const Icon(Icons.school),
-            label: isOromo ? 'Barnoota' : 'Study',
+            icon: const Icon(Icons.view_timeline_outlined),
+            selectedIcon: const Icon(Icons.view_timeline_rounded),
+            label: isOromo ? 'Sagantaa' : 'Schedule',
           ),
           NavigationDestination(
             icon: const Icon(Icons.bar_chart_outlined),
-            selectedIcon: const Icon(Icons.bar_chart),
+            selectedIcon: const Icon(Icons.bar_chart_rounded),
             label: isOromo ? 'Gabaasa' : 'Reports',
           ),
           NavigationDestination(
             icon: const Icon(Icons.settings_outlined),
-            selectedIcon: const Icon(Icons.settings),
-            label: isOromo ? 'Qindaa' : 'Settings',
+            selectedIcon: const Icon(Icons.settings_rounded),
+            label: isOromo ? 'Qindaa\'ina' : 'Settings',
           ),
         ],
       ),
@@ -1737,6 +2363,10 @@ class _PlannerHomePageState extends State<PlannerHomePage> {
   }
 
   Widget _buildPlaceholderPage(int index) {
+    if (index == 5) {
+      return _buildSchedulePage();
+    }
+
     if (index == 1) {
       return _buildCalendarPage();
     }
@@ -5127,3 +5757,9 @@ class _ReportStatusRow extends StatelessWidget {
     );
   }
 }
+
+
+
+
+
+

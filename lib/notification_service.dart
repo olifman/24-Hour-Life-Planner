@@ -74,12 +74,17 @@ class NotificationService {
     );
 
     if (recurrence == 'Daily') {
-      while (!scheduledTime.isAfter(now)) {
-        scheduledTime = scheduledTime.add(const Duration(days: 1));
+      if (!scheduledTime.isAfter(now)) {
+        final daysToAdd = now.difference(scheduledTime).inDays + 1;
+        scheduledTime = scheduledTime.add(Duration(days: daysToAdd));
       }
     } else if (recurrence == 'Weekly') {
-      while (!scheduledTime.isAfter(now)) {
-        scheduledTime = scheduledTime.add(const Duration(days: 7));
+      if (!scheduledTime.isAfter(now)) {
+        final elapsedDays = now.difference(scheduledTime).inDays;
+        final weeksToAdd = (elapsedDays ~/ 7) + 1;
+        scheduledTime = scheduledTime.add(
+          Duration(days: weeksToAdd * 7),
+        );
       }
     } else if (!scheduledTime.isAfter(now)) {
       await cancel(id);
@@ -115,12 +120,9 @@ class NotificationService {
     );
 
     debugPrint('[REMINDER] zonedSchedule completed for id=$id');
-    final pending = await _plugin.pendingNotificationRequests();
-    debugPrint('[REMINDER] Pending notifications=${pending.length}');
-    for (final item in pending) {
-      debugPrint('[REMINDER] Pending id=${item.id} title=${item.title}');
-    }
   }
 }
+
+
 
 
